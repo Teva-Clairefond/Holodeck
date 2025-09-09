@@ -35,32 +35,103 @@
            `INTERFACESv4="enp0s8"`       #Relie le serveur DHCP au réseau LAN
 
  - `nano /etc/dhcp/dhcpd.conf`
-        `subnet 172.16.0.1 netmask 255.255.0.0 {`            #Déclare le réseau géré par le serveur DHCP 
-        `range 172.16.0.100 172.16.0.200;`        # Plage IP pour les VM
-        `option routers 172.16.0.1;}`         # VM serveur comme passerelle
+
+	    option domain-name "starfleet.lan";
+	    option domain-name-servers 172.16.0.1;
+    	subnet 172.16.0.1 netmask 255.255.0.0 {        # Déclare le réseau géré par le serveur DHCP 
+    	range 172.16.0.100 172.16.0.200;        		# Plage IP pour les VM
+        option routers 172.16.0.1;}	        	    # VM serveur comme passerelle
 
 - `systemctl start isc-dhcp-server`
 
 ## IV - Installation du serveur DNS sur la VM serveur
 
- - `apt install bind9`
+-    `apt install bind9 bind9utils`
+-    `nano /etc/bind/named.conf.options`
 
- - `nano /etc/bind/named.conf.local`
- 
+			acl "lan" {
+		    172.16.0.0/16;
+		    localhost;
+		    localnets;
+			};
 
-	   zone "startfleet.lan" {
-       type master;
-       file "/etc/bind/db.starfleet.lan";
-       allow-update { none;};
-       };
-        
-       zone ".in-addr.arpa" {
-       type master;
-       file "/etc/bind/db.inverse.starfleet.lan";
-       allow-update { none;};
-       };
-    
-- `nano db.starfleet.lan`
+
+			options {
+		    // Répertoire de travail de Bind
+		    directory "/var/cache/bind";
+
+		    // Redirecteurs DNS (résolveurs externes)
+		    forwarders {
+		            1.1.1.1;
+		            9.9.9.9;
+		    };
+
+		    // Mode récursif, pour résoudre les noms externes
+		    recursion yes;
+
+		    // Active la validation DNSSEC (vérifier l'authenticité des réponses DNS signées)
+		    dnssec-validation auto;
+
+		    // Ecouter sur toutes les interfaces réseau en IPv4 et IPv6
+		    listen-on { any; };
+		    listen-on-v6 { any; };
+
+		    // Autoriser les requêtes pour les hôtes de l'ACL "lan"
+		    allow-query { lan; };
+
+			};
+
+-  `named-checkconf`		# Vérifie la syntaxe du fichier dhcpd.conf
+-  `nano /etc/bind/named.conf.local`	# Pour créer la nouvelle zone DNS
+	
+		zone "starfleet.lan" {
+		        type master;
+		        file "/etc/bind/db.starfleet.lan";
+		        allow-update { none;};
+		};
+
+
+- `nano /etc/bind/db.starfleet.lan` #Création du fichier de zone directe
+
+		$TTL    604800
+		@       IN      SOA     VMserveur.starfleet.lan. root.starfleet.lan. (
+		                              2         ; Serial
+		                         604800         ; Refresh
+		                          86400         ; Retry
+		                        2419200         ; Expire
+		                         604800 )       ; Negative Cache TTL
+		;
+		; Serveur DNS principal
+		@           IN      NS      VMserveur.starfleet.lan.
+
+		; Adresse du serveur DNS
+		VMserveur   IN      A       172.16.0.1
+
+		; Domaine racine pointe vers le serveur
+		@           IN      A       172.16.0.1
+
+		; Alias (facultatifs)
+		dns         IN      CNAME   starfleet.lan.
+		srv-dhcp    IN      A       172.16.0.1
+
+
+
+- `named-checkzone starfleet.lan /etc/bind/db.starfleet.lan` #Pour vérifier la syntaxe.
+
+- `systemctl start bind9`  
+- `sudo systemctl enable named.service`  
+- `sudo systemctl status bind9`	#Pour vérifier que le serveur est bien actif
+
+
+- `sudo nano /etc/resolv.conf`
+
+		domain starfleet.lan
+		nameserver 10.10.0.1
+		
+
+
+
+
 
 ## V - Connecter les deux VM via le LAN
 
@@ -84,7 +155,7 @@
 
 	-      ip addr     #Verifier l'attribution d'une nouvelle adresse ip
 
-## VI - Installation du serveur web nginx :
+## VI - Installation du serveur web nginx
 
    - `sudo apt install curl gpg`
    -  `curl -fsSL https://nginx.org/keys/nginx_signing.key \ | sudo gpg --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg`
@@ -100,6 +171,108 @@
   - `systemctl status nginx`
     
     Dans la machine cliente, sur le navigateur : http://{adresse ip de la machine serveur sur le LAN}   #Vérifier la connexion des VM et le serveur nginx
+	Puis http://{nom-du-domaine}	#Vérifie l'attribution DNS
+
+
+## VII - Passage en https
+
+- `apt  install  openssl` 
+
+-     Génération du certificat auto signé :
+			mkdir  -p  /etc/nginx/ssl
+	      openssl  req  -x509  -nodes  -days  365  -newkey  rsa:2048  \
+	      -keyout  /etc/nginx/ssl/starfleet.key  \
+	      -out  /etc/nginx/ssl/starfleet.crt
+
+- Création du fichier de configuration HTTPS :
+`nano  /etc/nginx/sites-available/starfleet-ssl.conf`
+
+	    server  {
+		listen  443  ssl;
+		server_name  starfleet.lan;
+		ssl_certificate  /etc/nginx/ssl/starfleet.crt;
+		ssl_certificate_key  /etc/nginx/ssl/starfleet.key;
+		root  /var/www/html;
+		index  index.html;
+		location  /  {
+		try_files  $uri  $uri/  =404;
+		}
+		}
+		server  {
+		listen  80;
+		server_name  starfleet.lan;
+		return  301  https://$host$request_uri;
+		}
+
+-     Fait un lien entre le fichier de configuration du site et les sites activés : ln -s /etc/nginx/sites-available/starfleet-ssl.conf /etc/nginx/sites-enabled/
+-   `Enlever le lien vers le le site de nginx par défaut : rm /etc/nginx/sites-enabled/default`
+- `Vérifier la syntaxe et la validité des fichiers :
+	nginx -t`
+
+- `nano /etc/nginx/nginx.conf`
+		
+
+		user www-data;
+		worker_processes auto;
+		pid /run/nginx.pid;
+	    include /etc/nginx/modules-enabled/*.conf;
+		events {
+		worker_connections 768;
+		}
+
+		http {
+				sendfile on;
+				tcp_nopush on;
+				tcp_nodelay on;
+				keepalive_timeout 65;
+				types_hash_max_size 2048;
+				include /etc/nginx/mime.types;
+			    default_type application/octet-stream;
+			    ssl_protocols TLSv1.2 TLSv1.3;
+			    ssl_prefer_server_ciphers on;
+			    access_log /var/log/nginx/access.log;
+			    error_log /var/log/nginx/error.log;
+			    server {
+		        listen 443 ssl;
+		        server_name starfleet.lan;
+
+		        ssl_certificate     /etc/nginx/ssl/starfleet.crt;
+		        ssl_certificate_key /etc/nginx/ssl/starfleet.key;
+
+		        root /var/www/html;
+		        index index.html;
+
+		        location / {
+	            try_files $uri $uri/ =404;
+        }
+	    }
+
+	   server {
+        listen 80;
+        server_name starfleet.lan;
+        return 301 https://$host$request_uri;
+	    }
+		}
+
+
+- `systemctl restart nginx`
+
+
+## VIII - Installation du serveur PHP
+
+
+-     sudo wget -O /usr/share/keyrings/php-archive-keyring.gpg https://packages.sury.org/php/apt.gpg
+
+- `nano /etc/apt/sources.list.d/php.list`
+
+		deb [signed-by=/usr/share/keyrings/php-archive-keyring.gpg] https://packages.sury.org/php/ trixie main
+
+-     apt install php7.4-fpm php8.2-fpm
+
+
+
+
+
 
 
 
