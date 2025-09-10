@@ -63,7 +63,7 @@
 		    // Redirecteurs DNS (résolveurs externes)
 		    forwarders {
 		            1.1.1.1;
-		            9.9.9.9;
+		            8.8.8.8;
 		    };
 
 		    // Mode récursif, pour résoudre les noms externes
