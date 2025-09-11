@@ -113,6 +113,9 @@
 		; Alias (facultatifs)
 		dns         IN      CNAME   starfleet.lan.
 		srv-dhcp    IN      A       172.16.0.1
+  		www7            IN      A       172.16.0.1
+		www8            IN      A       172.16.0.1
+		php             IN      A       172.16.0.1
 
 
 
