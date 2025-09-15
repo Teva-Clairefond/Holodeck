@@ -188,24 +188,12 @@
 	      -out  /etc/nginx/ssl/starfleet.crt
 
 - Création du fichier de configuration HTTPS :
-`nano  /etc/nginx/sites-available/starfleet-ssl.conf`
 
-	    server  {
-		listen  443  ssl;
-		server_name  starfleet.lan;
-		ssl_certificate  /etc/nginx/ssl/starfleet.crt;
-		ssl_certificate_key  /etc/nginx/ssl/starfleet.key;
-		root  /var/www/html;
-		index  index.html;
-		location  /  {
-		try_files  $uri  $uri/  =404;
-		}
-		}
-		server  {
-		listen  80;
-		server_name  starfleet.lan;
-		return  301  https://$host$request_uri;
-		}
+	`nano  /etc/nginx/sites-available/starfleet-ssl.conf`
+
+
+
+
 
 -     Fait un lien entre le fichier de configuration du site et les sites activés : ln -s /etc/nginx/sites-available/starfleet-ssl.conf /etc/nginx/sites-enabled/
 -   `Enlever le lien vers le le site de nginx par défaut : rm /etc/nginx/sites-enabled/default`
@@ -215,48 +203,38 @@
 - `nano /etc/nginx/nginx.conf`
 		
 
-		user www-data;
-		worker_processes auto;
-		pid /run/nginx.pid;
-	    include /etc/nginx/modules-enabled/*.conf;
-		events {
-		worker_connections 768;
-		}
 
-		http {
-				sendfile on;
-				tcp_nopush on;
-				tcp_nodelay on;
-				keepalive_timeout 65;
-				types_hash_max_size 2048;
-				include /etc/nginx/mime.types;
-			    default_type application/octet-stream;
-			    ssl_protocols TLSv1.2 TLSv1.3;
-			    ssl_prefer_server_ciphers on;
-			    access_log /var/log/nginx/access.log;
-			    error_log /var/log/nginx/error.log;
-			    server {
-		        listen 443 ssl;
-		        server_name starfleet.lan;
 
-		        ssl_certificate     /etc/nginx/ssl/starfleet.crt;
-		        ssl_certificate_key /etc/nginx/ssl/starfleet.key;
+	server {  
+		listen 80;  
+		server_name www7.starfleet.lan;  
+		return 301 https://$host$request_uri;  
+	}  
+		
+	
 
-		        root /var/www/html;
-		        index index.html;
+	server {  
+   		listen 443 ssl;  
+ 		server_name www7.starfleet.lan; 
 
-		        location / {
-	            try_files $uri $uri/ =404;
-        }
-	    }
-
-	   server {
-        listen 80;
-        server_name starfleet.lan;
-        return 301 https://$host$request_uri;
-	    }
-		}
-
+ 
+		  
+		root /var/www/www7;  
+		index index.php index.html;  
+	  
+		ssl_certificate /etc/ssl/certs/starfleet.crt;  
+		ssl_certificate_key /etc/ssl/private/starfleet.key;  
+	  
+		location / {  
+			try_files $uri $uri/ =404;  
+		}  
+  
+		location ~ \.php$ {  
+			include fastcgi_params;  
+			fastcgi_pass unix:/run/php/php7.4-fpm.sock;  
+			fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;  
+		}  
+    }
 
 - `systemctl restart nginx`
 
@@ -272,8 +250,52 @@
 
 -     apt install php7.4-fpm php8.2-fpm
 
+- Création des fichiers de configuration de serveurs virtuels Nginx (Virtual Hosts) correspondant aux sites web :
+	nano /etc/nginx/sites-enabled/www7.starfleet.lan
+		
 
+	  server {
+	    	    listen 443 ssl;
+	    	    server_name www7.starfleet.lan;
+	    ssl_certificate     /etc/nginx/ssl/starfleet.crt;
+	    ssl_certificate_key /etc/nginx/ssl/starfleet.key;
 
+	    root /var/www/www7.starfleet.lan;
+	    index index.php index.html;
+
+	    location / {
+	        try_files $uri $uri/ =404;
+	    }
+
+	    location ~ \.php$ {
+	        include snippets/fastcgi-php.conf;
+	        fastcgi_pass unix:/run/php/php7.4-fpm.sock;
+		    }
+		}
+
+		server {
+		    listen 443;
+		    server_name www7.starfleet.lan;
+		    return 301 https://$host$request_uri;
+		}
+	
+Faire la même chose adapté aux autres fichiers :
+
+	nano /etc/nginx/sites-enabled/www8.starfleet.lan
+	nano /etc/nginx/sites-enabled/php.starfleet.lan
+	nano /etc/nginx/sites-enabled/admin.starfleet.lan
+
+- Création des répertoires racine :
+	mkdir /var/www/www7
+	mkdir /var/www/www8
+	
+- Création d'un fichier test :
+	nano /var/www/www8/test8.php
+		<?php phpinfo(); ?>
+	nano /var/www/www7/test7.php
+		<?php phpinfo(); ?>
+
+- Test sur la machine cliente
 
 
 
