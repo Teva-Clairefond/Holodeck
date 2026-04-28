@@ -36,7 +36,7 @@ sudo nano /etc/network/interfaces
 ```bash
 sudo nano /etc/dhcp/dhcpd.conf
 
-    option domain-name "holodeck.local";
+    option domain-name "starfleet.lan";
         # Nom du domaine (optionnel), correspond au nom complet des appareils du réseau (du domaine) exemple : imprimante.exemple.local  
 
     option domain-name-servers 192.168.1.1;

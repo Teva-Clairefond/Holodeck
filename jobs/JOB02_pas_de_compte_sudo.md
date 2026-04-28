@@ -13,7 +13,7 @@ En root :
 su -
 cd /etc/sudoers
     
-    teva    ALL=(ALL:ALL)   /usr/bin/apt install *, /usr/bin/systemctl *, /usr/sbin/ip *, /usr/bin/nano, /etc/default/isc-dhcp-server
+    teva    ALL=(ALL:ALL)   /usr/bin/apt install *, /usr/bin/systemctl *, /usr/sbin/ip *, /usr/bin/nano, /etc/default/isc-dhcp-server, /usr/bin/chown, /usr/bin/chmod, /usr/bin/named-checkconf
 
 su - teva
 ```
@@ -27,6 +27,9 @@ nano .bashrc
     alias systemctl="sudo systemctl"
     alias ip="sudo ip"
     alias nano="sudo nano"
+    alias chown="sudo chown"
+    alias chmod="sudo chmod"
+    alias named-checkconf="sudo named-checkconf"
 
 source ~/.bashrc
 ```
