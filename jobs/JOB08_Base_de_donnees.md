@@ -36,7 +36,7 @@ sudo mariadb-secure-installation;
 Script de sécurité pour modifier les options par défaut les moins sûres
 
 1 - Identification en tant qu'utilisateur root de la BdD avec son mdp actuel : Cliquer sur "ENTER" (aucun mdp)
-2 - Identification avec la socket UNIX, résultat : seul le compte root Linux peut admin la BdD.
+2 - Identification avec la socket UNIX, résultat : seul le compte root Linux peut devenir le root de la BdD.
 3 - Création de mdp pour l'user root de la BdD ? : "N"
     # Pas besoin car root continuera de se connecter via le socket unix de la machine
 4 - Pour toutes les questions suivantes il faut garder les valeurs par défaut : "Y"

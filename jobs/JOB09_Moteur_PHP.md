@@ -27,7 +27,9 @@ CGI (Common Gateway Interface) : Norme qui définit la communication entre le se
 FastCGI : Version améliorée de CGI, plus rapide. Le processus php-cgi continue de tourner en fond au lieu d'être redémarré à chaque requête.
 
     
-## 1) Installation des paquets :
+## Installation du site web php :
+
+### 1) Installation des paquets :
 
 **Différence par rapport à l'énoncé du sujet : Ma VM étant sous Debian13 Trixie, elle n'est pas compatible avec php7. Il n'y aura donc que php8.**
 
@@ -118,19 +120,10 @@ openssl x509 -in /etc/ssl/certs/nginx.crt -noout -text | grep -A2 "Subject Alter
 sudo nano /etc/nginx/sites-available/www8.starfleet.lan
     server {
         listen 80;
+        listen [::]:80;
+
         server_name www8.starfleet.lan;
 
-        root /var/www/www8;
-        index index.php index.html;
-
-        location / {
-            try_files $uri $uri/ =404;
-        }
-
-        location ~ \.php$ {
-            include snippets/fastcgi-php.conf;
-            fastcgi_pass unix:/run/php/php8.4-fpm.sock;
-        }
         return 301 https://$host$request_uri;
     }
 
@@ -149,7 +142,7 @@ sudo nano /etc/nginx/sites-available/www8.starfleet.lan
 
         location ~ \.php$ {
             include snippets/fastcgi-php.conf;
-            fastcgi_pass unix:/run/php/php7.4-fpm.sock;
+            fastcgi_pass unix:/run/php/php8.4-fpm.sock;
         }
 
         access_log /var/log/nginx/starfleet.lan.access.log;
@@ -192,8 +185,220 @@ nameserver 192.168.1.1
 
 ### 11) Vérification de l'accès :
 
+
 ```bash
 systemctl reload bind9    
 curl -k https://www8.starfleet.lan
     # -k ignore le fait que le certificat soit auto-signé
 ```
+
+
+## Installation de phpmyadmin :
+
+
+phpmyadmin est un outil qui permet d'administrer une base de données au travers d'une interface graphique dans le navigateur. 
+
+### 1) Installation du paquet :
+
+```bash
+apt install phpmyadmin -y
+```
+
+Il est alors demandé si possède un serveur web apache2 ou lighttpd : -> Ne rien sélectionner -> Entrer
+
+Configure database for phpmyadmin with dbconfig-common? -> YES
+
+### 2) Création du site Nginx pour phpmyadmin :
+
+```bash
+nano /etc/nginx/sites-available/php.starfleet.lan
+    server {
+        listen 80;
+        listen [::]:80;
+
+        server_name php.starfleet.lan;
+
+        return 301 https://$host$request_uri;
+    }
+
+    server {
+        listen 443 ssl;
+        listen [::]:443 ssl;
+        server_name php.starfleet.lan;
+        root /usr/share/phpmyadmin;
+        index index.php index.html;
+
+        ssl_certificate /etc/ssl/certs/nginx.crt;
+        ssl_certificate_key /etc/ssl/private/nginx.key;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_ciphers 'HIGH:!aNULL:!MD5';
+        ssl_prefer_server_ciphers on;
+
+        location ~ \.php$ {
+            include snippets/fastcgi-php.conf;
+            fastcgi_pass unix:/run/php/php8.4-fpm.sock;
+        }
+
+        access_log /var/log/nginx/starfleet.lan.access.log;
+        error_log  /var/log/nginx/starfleet.lan.error.log;
+
+        location / {
+            try_files $uri $uri/ =404;
+        }
+    }
+```
+
+Créer le lien symbolique de sites-enabled vers sites-available :
+
+```bash
+ln -s //etc/nginx/sites-available/php.starfleet.lan /etc/nginx/sites-enabled/
+```
+
+
+### 3) Vérification : 
+
+
+```bash
+nginx -t
+systemctl reload nginx
+```
+
+### 4) Ajout au DNS :
+
+```bash
+nano /etc/bind/db.starfleet.lan
+    php  IN   A   192.168.1.1
+```
+
+Sans oublier d'incrémenter le Serial.
+
+```bash
+systemctl reload bind9
+```
+
+### 5) Création d'un utilisateur adminsql :
+
+Afin de pouvoir nous connecter à la base de données depuis la machine cliente vers la machine serveur au travers de phpmyadmin, il nous faut un nouvel utilisateur admin. En effet, nous avons précédement dévalidé la connexion root distante.
+
+
+```bash
+mariadb
+```
+
+```sql
+CREATE USER 'adminsql'@'localhost' IDENTIFIED BY '123'; 
+    --mot de passe très faible pour facilité la manipulation, à ne pas reproduire
+GRANT ALL PRIVILEGES ON *.* TO 'adminsql'@'localhost' WITH GRANT OPTION;
+FLUSH PRIVILEGES;
+EXIT;
+```
+
+### 6) Vérification :
+
+Connexion depuis la machine cliente : https://php.starfleet.lan
+
+utilisateur : adminsql
+mot de passe : 123
+
+
+## Administration de la VM serveur depuis admin.starfleet.lan avec Cockpit :
+
+### Installation de Cockpit :
+
+
+```bash
+apt update
+apt install cockpit -y
+systemctl enable --now cockpit.socket
+
+```
+
+
+### 2) Création du site Nginx pour phpmyadmin :
+
+```bash
+nano /etc/nginx/sites-available/admin.starfleet.lan
+    server {
+        listen 80;
+        listen [::]:80;
+
+        server_name admin.starfleet.lan;
+
+        return 301 https://$host$request_uri;
+    }
+
+    server {
+        listen 443 ssl;
+        listen [::]:443 ssl;
+        server_name admin.starfleet.lan;
+        index index.php index.html;
+
+        ssl_certificate /etc/ssl/certs/nginx.crt;
+        ssl_certificate_key /etc/ssl/private/nginx.key;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_ciphers 'HIGH:!aNULL:!MD5';
+        ssl_prefer_server_ciphers on;
+
+    location / {
+        proxy_pass https://127.0.0.1:9090;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+        proxy_http_version 1.1;
+        proxy_buffering off;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        proxy_ssl_verify off;
+
+        gzip off;
+    }
+
+        access_log /var/log/nginx/starfleet.lan.access.log;
+        error_log  /var/log/nginx/starfleet.lan.error.log;
+    }
+```
+
+Créer le lien symbolique de sites-enabled vers sites-available :
+
+```bash
+ln -s //etc/nginx/sites-available/admin.starfleet.lan /etc/nginx/sites-enabled/
+```
+
+
+### 3) Vérification : 
+
+
+```bash
+nginx -t
+systemctl reload nginx
+```
+
+### 4) Ajout au DNS :
+
+```bash
+nano /etc/bind/db.starfleet.lan
+    admin  IN   A   192.168.1.1
+```
+
+Sans oublier d'incrémenter le Serial.
+
+```bash
+systemctl reload bind9
+```
+
+## Captures d'écran :
+
+Site php8 fonctionnel depuis la VM cliente : 
+
+![Site php8 fonctionnel](/images/jobs/job09/site_php8_fonctionnel.jpg)
+
+phpmyadmin fonctionnel depuis la VM cliente :
+
+![Site phpmyadmin fonctionnel](/images/jobs/job09/phpmyadmin_fonctionnel.jpg)
+
+Administration de la VM serveur possible via Cockpit sur admin.starfleet.lan  :
+
+![Cockpit fonctionnel](/images/jobs/job09/admin_VM_serveur_cockpit.jpg)
