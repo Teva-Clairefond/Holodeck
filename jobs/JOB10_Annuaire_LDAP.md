@@ -274,7 +274,7 @@ chmod 750 /var/www/auth
 chmod 640 /var/www/auth/ldap_auth.php
 ```
 
-Création d'un snippet nginx :
+Création d'un snippet (configuration réutilisable) nginx :
 
 ```bash
 nano /etc/nginx/snippets/ldap-auth.conf
